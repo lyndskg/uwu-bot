@@ -16,14 +16,12 @@ from requests_oauthlib import OAuth2
 
 
 load_dotenv()  # take environment variables from .env.
+
 redis_url = os.getenv('redis_url')
 
-if redis_url:  # run redis on e.g. cloud provider
-    print("Running external Redis...")
-    r = redis.Redis.from_url(redis_url, ssl_cert_reqs=ssl.CERT_NONE)
-else:  # run locally
-    print("Running Redis on localhost...")
-    r = redis.StrictRedis(host='localhost', port=6379, db=0)
+# Run locally
+print("Running Redis on localhost...")
+r = redis.StrictRedis(host = 'localhost', port = 6379, db = 0)
 
 
 app = Flask(__name__)
@@ -31,11 +29,28 @@ app.secret_key = os.urandom(50)
 
 # Configure the logger
 logging.basicConfig(
-    filename='uwu.log',  # Specify the log file name
-    level=logging.DEBUG, # Set the logging level to DEBUG or higher
-    format='[%(levelname)s] %(asctime)s - %(message)s' # Specify the log message format
+    filename = 'uwu.log',  # Specify the log file name
+    level = logging.DEBUG, # Set the logging level to DEBUG or higher
+    format = '[%(levelname)s] %(asctime)s - %(message)s' # Specify the log message format
 )
 logger = logging.getLogger(__name__)
+
+
+client_id = os.getenv('CLIENT_ID')
+client_secret = os.getenv('CLIENT_ID_SECRET')
+auth_url = "https://twitter.com/i/oauth2/authorize"
+token_url = "https://api.twitter.com/2/oauth2/token"
+redirect_uri = os.getenv('redirect_uri')
+
+scopes = ["tweet.read", "users.read", "tweet.write", "offline.access"]
+
+code_verifier = base64.urlsafe_b64encode(os.urandom(30)).decode("utf-8")
+code_verifier = re.sub("[^a-zA-Z0-9]+", "", code_verifier)
+
+code_challenge = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
+code_challenge = code_challenge.replace("=", "")
+
 
 bot_id = 27604348
 bot_name = "UwU-Bot69"
@@ -117,3 +132,5 @@ for tweet in tweepy.Cursor(api.search_tweets, search).items(maxNumberOfTweets):
 
 if __name__ == "__main__":
     # TODO
+    app.run(debug = True, port = 5000)
+    
