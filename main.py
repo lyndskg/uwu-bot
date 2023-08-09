@@ -1,7 +1,8 @@
+import base64
+import hashlib
+import json
+import re
 import tweepy
-from io import BytesIO
-from dotenv import load_dotenv
-from Pillow import Image, ImageDraw, ImageFont
 import os
 import requests
 import random
@@ -11,8 +12,11 @@ import openai
 import textwrap
 import redis
 import logging
+from io import BytesIO
+from dotenv import load_dotenv
+from Pillow import Image, ImageDraw, ImageFont
 from flask import Flask, request, redirect, session, url_for, render_template
-from requests_oauthlib import OAuth2
+from requests_oauthlib import OAuth2Session, TokenUpdated
 
 
 load_dotenv()  # take environment variables from .env.
@@ -36,6 +40,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+openai.api_key = os.getenv('OPENAI_API_KEY')
+consumer_key = os.getenv('CONSUMER_KEY')
+consumer_secret = os.getenv('CONSUMER_SECRET')
+access_token = os.getenv('ACCESS_TOKEN')
+access_secret = os.getenv('ACCESS_TOKEN_SECRET')
 client_id = os.getenv('CLIENT_ID')
 client_secret = os.getenv('CLIENT_ID_SECRET')
 auth_url = "https://twitter.com/i/oauth2/authorize"
@@ -52,25 +61,78 @@ code_challenge = base64.urlsafe_b64encode(code_challenge).decode("utf-8")
 code_challenge = code_challenge.replace("=", "")
 
 
+def make_token():
+    return OAuth2Session(client_id, redirect_uri = redirect_uri, scope = scopes)
+
+
+def post_tweet(payload, token):
+    print("Tweeting!")
+    return requests.request(
+        "POST",
+        "https://api.twitter.com/2/tweets",
+        json = payload,
+        headers = {
+            "Authorization": "Bearer {}".format(token["access_token"]),
+            "Content-Type": "application/json",
+        },
+    )
+
+
+# Currently not available to free access/essential access for v2 API
+def read_tweet(tweet_id, token):
+    print("Reading!")
+    return requests.request(
+        "GET",
+        f"https://api.twitter.com/2/tweets/{tweet_id}",
+        headers = {
+            "Authorization": "Bearer {}".format(token["access_token"]),
+            "Content-Type": "application/json",
+        },
+    )
+
+
+@app.route("/")
+def demo():
+    global twitter
+    twitter = make_token()
+    authorization_url, state = twitter.authorization_url(
+        auth_url, code_challenge = code_challenge, code_challenge_method = "S256"
+    )
+    session["oauth_state"] = state
+    return redirect(authorization_url)
+
+
+@app.route("/oauth/callback", methods=["GET"])
+def callback():
+    code = request.args.get("code")
+    token = twitter.fetch_token(
+        token_url = token_url,
+        client_secret = client_secret,
+        code_verifier = code_verifier,
+        code = code,
+    )
+    st_token = '"{}"'.format(token)
+    j_token = json.loads(st_token)
+
+    r.set("token", j_token)
+
+    # Use auto_tweeter.py for the automated experience
+    payload = {f"text": "This tweet was manually authenticated in browser"}
+    response = post_tweet(payload, token).json()
+
+    return response
+
+
 bot_id = 27604348
 bot_name = "UwU-Bot69"
 
-openai.api_key = "xxx"
-
-
-#Accessing credentials from .env file
-CONSUMER_KEY = "xxx"
-CONSUMER_SECRET = "xxx"
-ACCESS_TOKEN = "xxx"
-ACCESS_TOKEN_SECRET = "xxx"
-
 
 #Setting credentials to access Twitter API
-auth = tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
-auth.set_access_token(ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+auth.set_access_token(access_token, access_secret)
 
 #Calling API using Tweepy
-api = tweepy.API(auth, wait_on_rate_limit=True)
+api = tweepy.API(auth, wait_on_rate_limit = True)
 
 
 #Search keyword 
@@ -103,7 +165,7 @@ for tweet in tweepy.Cursor(api.search_tweets, search).items(maxNumberOfTweets):
             # Use the tweet text as the prompt for ChatGPT
             response = openai.Completion.create(
                 engine="text-davinci-003",
-                prompt=prompt,
+                prompt = prompt,
                 max_tokens = 80,
                 n = 1,
                 stop=None,
@@ -112,7 +174,7 @@ for tweet in tweepy.Cursor(api.search_tweets, search).items(maxNumberOfTweets):
             reply_text = response["choices"][0]["text"]
 
             # Send the reply
-            api.update_status('@'+tweet.user.screen_name+''+reply_text, in_reply_to_status_id=tweet.id)
+            api.update_status('@'+tweet.user.screen_name+''+reply_text, in_reply_to_status_id = tweet.id)
             print("Replied to tweet")
             print("###############################################################")
 
@@ -133,4 +195,3 @@ for tweet in tweepy.Cursor(api.search_tweets, search).items(maxNumberOfTweets):
 if __name__ == "__main__":
     # TODO
     app.run(debug = True, port = 5000)
-    
