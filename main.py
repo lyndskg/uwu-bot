@@ -1,5 +1,6 @@
 import tweepy
 from io import BytesIO
+from dotenv import load_dotenv
 from Pillow import Image, ImageDraw, ImageFont
 import os
 import requests
@@ -8,8 +9,25 @@ import time
 import sys
 import openai
 import textwrap
+import redis
 import logging
+from flask import Flask, request, redirect, session, url_for, render_template
+from requests_oauthlib import OAuth2
 
+
+load_dotenv()  # take environment variables from .env.
+redis_url = os.getenv('redis_url')
+
+if redis_url:  # run redis on e.g. cloud provider
+    print("Running external Redis...")
+    r = redis.Redis.from_url(redis_url, ssl_cert_reqs=ssl.CERT_NONE)
+else:  # run locally
+    print("Running Redis on localhost...")
+    r = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+
+app = Flask(__name__)
+app.secret_key = os.urandom(50)
 
 # Configure the logger
 logging.basicConfig(
@@ -18,6 +36,9 @@ logging.basicConfig(
     format='[%(levelname)s] %(asctime)s - %(message)s' # Specify the log message format
 )
 logger = logging.getLogger(__name__)
+
+bot_id = 27604348
+bot_name = "UwU-Bot69"
 
 openai.api_key = "xxx"
 
@@ -92,3 +113,7 @@ for tweet in tweepy.Cursor(api.search_tweets, search).items(maxNumberOfTweets):
 
     except tweepy.errors.TweepyException as e:
         print(str(e))
+   
+
+if __name__ == "__main__":
+    # TODO
